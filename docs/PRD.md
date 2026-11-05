@@ -55,16 +55,17 @@ verifies. We state this everywhere a verdict is shown.
 ## MVP: milestones and definitions of done
 
 ### M1. Protocol (`stillproof`) and anchoring (`stillproof-anchor`)
-- [ ] `SPEC.md` v0, with test vectors shared by both repositories.
-- [ ] `claim`: build, parse, sign and verify (ECDSA P-256).
-- [ ] `merkle`: RFC 6962 tree, with inclusion proofs.
-- [ ] Anchoring service:
+- [x] `SPEC.md` v0, with test vectors shared by both repositories.
+- [x] `claim`: build, parse, sign and verify (ECDSA P-256).
+- [x] `merkle`: RFC 6962 tree, with inclusion proofs.
+- [x] Anchoring service:
   - `POST /v1/claims` and `GET /v1/receipts/{id}`;
   - SQLite storage;
   - a batch every 5 s, anchored as a `MEMO_HASH` transaction;
   - retries keep the same root.
-- [ ] `stillproof verify FILE RECEIPT`: the full check against Horizon.
-- [ ] CI on Linux, macOS and Windows. A testnet run is recorded in the README.
+- [x] `stillproof verify FILE RECEIPT`: the full check against Horizon.
+- [ ] CI on Linux, macOS and Windows (written; runs once the repositories are published).
+- [x] A testnet run is recorded in the README of `stillproof-anchor`.
 
 ### M2. Capture app
 - [ ] Capture a photo in the app, never import one.
