@@ -1,0 +1,5 @@
+/stillproof
+/stillproof.exe
+*.db
+*.db-*
+/site/verify.wasm
