@@ -68,16 +68,21 @@ verifies. We state this everywhere a verdict is shown.
 - [x] A testnet run is recorded in the README of `stillproof-anchor`.
 
 ### M2. Capture app
-- [ ] Capture a photo in the app, never import one.
-- [ ] Hash the file on the device, sign the claim and submit it.
-- [ ] Poll for the receipt.
-- [ ] A list of captures with each one's status.
-- [ ] Share the file together with its receipt.
-- [ ] An in-app verifier.
-- [ ] A software P-256 key in secure storage, labelled `software` in every
+- [x] Capture a photo in the app, never import one.
+- [x] Hash the file on the device, sign the claim and submit it.
+- [x] Poll for the receipt.
+- [x] A list of captures with each one's status.
+- [x] Share the file together with its receipt.
+- [x] An in-app verifier.
+- [x] A software P-256 key in secure storage, labelled `software` in every
   verdict.
-- [ ] Jest tests on the shared vectors: the app and Go must produce identical
+- [x] Jest tests on the shared vectors: the app and Go must produce identical
   bytes.
+
+M2 is checked by typecheck, lint, 69 Jest tests and a live testnet run: a
+claim signed by the app's TypeScript code was anchored by the Go service, and
+both verifiers accepted it. It has not yet run on a device; that comes with the
+CI Android build in M3.
 
 ### M3. Hardware keys and the web verifier
 - [ ] Android Keystore (StrongBox where available), with a key attestation

@@ -46,7 +46,9 @@ sig <hex>
 - **Inclusion proofs:** the audit paths of RFC 6962 §2.1.1, verified as in
   RFC 9162 §2.1.3.2.
 
-Leaves are ordered as the anchoring service received them.
+Leaves are ordered as the anchoring service received them. An audit path
+alone doesn't fix the tree size (RFC 9162 allows a path to verify for more
+than one size); what binds a leaf is the root, which is anchored on chain.
 
 ## 4. Anchor transaction
 
@@ -83,7 +85,7 @@ delay anchoring.
 }
 ```
 
-`ledger` and `closed_at` are a convenience. Verifiers read both from the
+`network` is `testnet` or `mainnet`. `ledger` and `closed_at` are a convenience. Verifiers read both from the
 network and fail if they differ.
 
 ## 6. Verifying a file against a receipt
@@ -102,7 +104,8 @@ network and fail if they differ.
    - The device-claimed capture time.
    - The key's protection level: `software` in v0; hardware and attested
      levels arrive with claim v1.
-   - Always: this does not prove the scene is genuine.
+   - Always, word for word: "This proves the file is unchanged and when it
+     existed. It does not prove the scene is genuine."
 
 If any check fails, the verdict names the first step that failed.
 
