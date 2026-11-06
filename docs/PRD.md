@@ -64,7 +64,7 @@ verifies. We state this everywhere a verdict is shown.
   - a batch every 5 s, anchored as a `MEMO_HASH` transaction;
   - retries keep the same root.
 - [x] `stillproof verify FILE RECEIPT`: the full check against Horizon.
-- [ ] CI on Linux, macOS and Windows (written; runs once the repositories are published).
+- [x] CI on Linux, macOS and Windows, green on all three repositories.
 - [x] A testnet run is recorded in the README of `stillproof-anchor`.
 
 ### M2. Capture app
@@ -89,7 +89,7 @@ CI Android build in M3.
   chain. The verifier checks it.
 - [ ] iOS Secure Enclave key, plus App Attest.
 - [ ] The browser verifier on GitHub Pages: drop in a file and its receipt.
-- [ ] Android build in CI.
+- [x] Android build in CI: every run attaches a debug APK.
 
 ### M4. Trust-minimised and mainnet
 - [ ] An Externalize proof that the anchoring ledger was confirmed by the
