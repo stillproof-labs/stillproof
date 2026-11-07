@@ -6,10 +6,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/stillproof-labs/stillproof/attest"
 	"github.com/stillproof-labs/stillproof/claim"
 	"github.com/stillproof-labs/stillproof/merkle"
 )
@@ -26,6 +28,8 @@ type Receipt struct {
 	Proof  []string `json:"proof"`
 	Root   string   `json:"root"`
 	Anchor Anchor   `json:"anchor"`
+
+	Attestation *attest.Attestation `json:"attestation,omitempty"` // v1, §8.1
 }
 
 // Anchor locates the transaction that recorded the root.
@@ -35,6 +39,8 @@ type Anchor struct {
 	Tx       string    `json:"tx"`
 	Ledger   uint32    `json:"ledger"`
 	ClosedAt time.Time `json:"closed_at"`
+
+	Proof json.RawMessage `json:"proof,omitempty"` // v1, §8.2: an Externalize bundle
 }
 
 // Tx is what the network says about an anchor transaction.
@@ -90,7 +96,7 @@ func Verify(ctx context.Context, file []byte, r Receipt, l Lookup) Verdict {
 		v.Failed, v.Reason = s, fmt.Sprintf(format, a...)
 		return v
 	}
-	if r.V != 0 {
+	if r.V != 0 && r.V != 1 {
 		return fail(StepClaim, "unsupported receipt version %d", r.V)
 	}
 	s, err := claim.Parse([]byte(r.Claim))
