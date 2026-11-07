@@ -88,7 +88,9 @@ CI Android build in M3.
 - [ ] Android Keystore (StrongBox where available), with a key attestation
   chain. The verifier checks it.
 - [ ] iOS Secure Enclave key, plus App Attest.
-- [ ] The browser verifier on GitHub Pages: drop in a file and its receipt.
+- [ ] The browser verifier on GitHub Pages: drop in a photo, with or without its receipt.
+- [ ] Check an uploaded photo: look up its receipt by hash, or read one embedded in it.
+- [ ] The design system in [DESIGN.md](DESIGN.md), in the app and the web verifier.
 - [x] Android build in CI: every run attaches a debug APK.
 
 ### M4. Trust-minimised and mainnet
