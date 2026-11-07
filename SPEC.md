@@ -118,3 +118,68 @@ If any check fails, the verdict names the first step that failed.
 | `GET /healthz` | | `200` |
 
 Submitting the same signed claim twice returns the same id and leaf.
+
+## 8. Additions in receipt v1
+
+A v1 receipt is a v0 receipt with `"v": 1` and any of the optional fields
+below. Verifiers accept `v` 0 and 1. Fields not listed here are an error.
+
+### 8.1 Key attestation
+
+`attestation` shows that the claim's key is held in hardware. It is per key,
+not per claim: a device registers it once (§8.4), and the anchoring service
+copies it into every receipt for that key.
+
+```json
+"attestation": { "kind": "android-key", "chain": ["<base64 DER>", "…"] }
+"attestation": { "kind": "apple-app-attest", "key_id": "<base64>", "object": "<base64 CBOR>" }
+```
+
+- **`android-key`:** an Android Keystore attestation chain, leaf first. It
+  must verify up to a Google hardware attestation root. The leaf's public key
+  must equal `key`, and its key description (OID 1.3.6.1.4.1.11129.2.1.17)
+  must have challenge `stillproof/key/v1`, purpose sign, and
+  `attestationSecurityLevel` 1 (level `tee`) or 2 (level `strongbox`).
+  Security level 0 is rejected.
+- **`apple-app-attest`:** an App Attest attestation object, verified as Apple
+  documents it, with `clientDataHash` = SHA-256 of the 65 key bytes. That
+  binds the claim key (a Secure Enclave key) to a genuine instance of the app.
+  Level `secure-enclave`.
+
+A receipt without `attestation` has level `software`. A failed attestation
+fails the **signature** step: a receipt never quietly drops to `software`.
+
+### 8.2 Validator proof of the anchor
+
+`anchor.proof` is an [Externalize](https://github.com/Externalize-Labs/externalize)
+bundle for the anchor transaction, built with its transaction set, so the
+memo and source are proven too. With a proof, step 5 checks the bundle
+against the validators' signatures instead of trusting Horizon: the
+transaction is `tx`, it succeeded in ledger `ledger`, its source is
+`account`, and its memo hash is `root`. The verdict says which way step 5 was
+checked: `validators` or `horizon`.
+
+The anchoring service adds the proof once the anchor's ledger is in a history
+archive, a few minutes after it closes. Until then the receipt has no proof.
+
+### 8.3 Embedded receipts
+
+A JPEG can carry its own receipt, as a C2PA manifest store in APP11
+segments. The manifest's assertion `org.stillproof.receipt` holds the receipt
+JSON. Embedding only inserts segments, so removing every C2PA APP11 segment
+gives back the exact bytes that were signed. A verifier given a photo with no
+separate receipt extracts the receipt, strips the segments and runs §6 on the
+result.
+
+The C2PA signer is whoever embedded the receipt, usually with a self-signed
+certificate. C2PA tools show that signer as untrusted. That is expected: the
+proof is the receipt, not the C2PA signature.
+
+### 8.4 API additions
+
+| Route | Request | Response |
+|---|---|---|
+| `POST /v1/keys` | `{"key": "<hex>", "attestation": {…}}` | `204`. `400` if the attestation doesn't verify for that key |
+| `GET /v1/receipts?sha256=<hex>` | | `200 {"receipts": […]}`: every anchored receipt for a file with that hash, oldest first. `202 {"status": "pending"}` if all are pending. `404` if unknown |
+
+The lookup lets anyone check a photo with nothing but the photo.
