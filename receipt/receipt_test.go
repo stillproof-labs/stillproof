@@ -81,7 +81,7 @@ func TestVerifyNamesTheFirstFailedStep(t *testing.T) {
 		"other memo":        {func(_ *[]byte, _ *Receipt, l fakeLookup) { l["aa"].MemoHash = &[32]byte{} }, StepAnchor},
 		"no memo":           {func(_ *[]byte, _ *Receipt, l fakeLookup) { l["aa"].MemoHash = nil }, StepAnchor},
 		"ledger mismatch":   {func(_ *[]byte, r *Receipt, _ fakeLookup) { r.Anchor.Ledger = 99 }, StepAnchor},
-		"unknown version":   {func(_ *[]byte, r *Receipt, _ fakeLookup) { r.V = 1 }, StepClaim},
+		"unknown version":   {func(_ *[]byte, r *Receipt, _ fakeLookup) { r.V = 2 }, StepClaim},
 		"closed_at differs": {func(_ *[]byte, r *Receipt, _ fakeLookup) { r.Anchor.ClosedAt = r.Anchor.ClosedAt.Add(time.Second) }, StepAnchor},
 	}
 	for name, c := range cases {
