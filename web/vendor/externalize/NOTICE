@@ -1,7 +1,8 @@
 Externalize (https://github.com/Externalize-Labs/externalize): the
-externalize-wasm browser package from release v0.2.0, unmodified.
+externalize-wasm browser package from release v0.3.0 (until that release
+is published, built from its commit), unmodified.
 Licensed under the Apache License, Version 2.0: LICENSE beside this file
 once fetched, and https://www.apache.org/licenses/LICENSE-2.0.
 
 scripts/vendor-externalize.sh (run by scripts/build-web.sh) fetches it
-and checks its SHA-256.
+and checks its SHA-256, or builds it.

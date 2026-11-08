@@ -12,9 +12,9 @@ This repository holds the protocol and the tools for checking it:
 |---|---|
 | [`SPEC.md`](SPEC.md) | The protocol: claims, signatures, the Merkle tree, the anchor transaction and receipts |
 | [`testdata/vectors.json`](testdata/vectors.json) | Test vectors every implementation must reproduce |
-| `claim`, `merkle`, `receipt` | Go packages for the spec, including full verification against Horizon |
+| `claim`, `merkle`, `receipt` | Go packages for the spec, including full verification against Horizon, or against the validators with a proof (§8.2) |
 | `embed` | Receipts embedded in JPEGs as a C2PA manifest (SPEC.md §8.3) |
-| `cmd/stillproof` | `stillproof verify FILE [RECEIPT]` and `embed`, plus `keygen` and `sign` for development |
+| `cmd/stillproof` | `stillproof verify FILE [RECEIPT]` and `embed`, plus `keygen` and `sign` for development. A receipt's validator proof is checked with the [`externalize`](https://github.com/Externalize-Labs/externalize) CLI (v0.3.0 or later) if it is on `PATH`; without it, Horizon |
 | `web`, `cmd/wasm` | The browser verifier: drop in a photo, with or without its receipt. The same Go checks, compiled to WebAssembly |
 
 The rest of the project:

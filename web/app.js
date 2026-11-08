@@ -30,6 +30,9 @@ let externalize = null;
 window.stillproofValidators = async (bundle) => {
   externalize ??= import("./vendor/externalize/externalize_wasm.js").then(async (m) => {
     await m.default({ module_or_path: new URL("vendor/externalize/externalize_wasm_bg.wasm", import.meta.url) });
+    // Before v0.3.0 (the first with proveAncestor) it rejects v2 bundles,
+    // which must not fail a receipt.
+    if (typeof m.proveAncestor !== "function") throw new Error("Externalize v0.3.0 or later is needed");
     return m;
   }).catch((e) => { externalize = null; throw e; });
   const m = await externalize;
@@ -232,9 +235,11 @@ function verdict(c, i, n, source) {
     a.setAttribute("aria-label", `Transaction ${c.tx} on stellar.expert`);
     line("Transaction", a);
   }
-  if (c.note) {
+  if (c.anchor_note) {
+    // Why the validator proof wasn't checked; step 5 then used Horizon.
     const nt = v.querySelector(".vnote");
-    nt.textContent = c.note;
+    const n = c.anchor_note.charAt(0).toUpperCase() + c.anchor_note.slice(1);
+    nt.textContent = `${n}${/[.!?]$/.test(n) ? "" : "."} The anchor was read from Horizon instead.`;
     nt.hidden = false;
   }
   if (ok) v.querySelector(".caveat").textContent = c.caveat;

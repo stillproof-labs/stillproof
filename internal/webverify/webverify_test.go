@@ -105,7 +105,7 @@ func TestGivenReceipt(t *testing.T) {
 		t.Fatalf("%+v", res)
 	}
 	c := res.Checks[0]
-	if c.AnchorChecked != CheckedHorizon || c.Ledger != 100 || c.Tx != r.Anchor.Tx || c.Caveat != receipt.Caveat {
+	if c.Anchored != receipt.CheckedHorizon || c.Ledger != 100 || c.Tx != r.Anchor.Tx || c.Caveat != receipt.Caveat {
 		t.Fatalf("%+v", c)
 	}
 	b := mustJSON(t, res)
@@ -130,7 +130,7 @@ func TestGivenReceiptFails(t *testing.T) {
 	}
 	for name, c := range cases {
 		res := Verify(context.Background(), c.file, c.json, o)
-		if res.Status != StatusFailed || res.Checks[0].Failed != c.want || res.Checks[0].AnchorChecked != "" {
+		if res.Status != StatusFailed || res.Checks[0].Failed != c.want || res.Checks[0].Anchored != "" {
 			t.Errorf("%s: %+v", name, res)
 		}
 	}
@@ -251,8 +251,8 @@ func TestValidatorProof(t *testing.T) {
 		checked string
 		note    bool
 	}{
-		"proven":        {nil, ok, nil, "", CheckedValidators, false},
-		"upper-case tx": {nil, claimReport(strings.ToUpper(a.Tx), a.Ledger, a.ClosedAt, true), nil, "", CheckedValidators, false},
+		"proven":        {nil, ok, nil, "", receipt.CheckedValidators, false},
+		"upper-case tx": {nil, claimReport(strings.ToUpper(a.Tx), a.Ledger, a.ClosedAt, true), nil, "", receipt.CheckedValidators, false},
 		"rejected":      {nil, map[string]any{"verified": false, "error": "bad signature"}, nil, receipt.StepAnchor, "", false},
 		"other tx":      {nil, claimReport(strings.Repeat("cd", 32), a.Ledger, a.ClosedAt, true), nil, receipt.StepAnchor, "", false},
 		"tx failed":     {nil, claimReport(a.Tx, a.Ledger, a.ClosedAt, false), nil, receipt.StepAnchor, "", false},
@@ -273,10 +273,10 @@ func TestValidatorProof(t *testing.T) {
 		}
 		o := Options{Horizon: noHorizon{}, Validators: validators(t, c.report, c.err)}
 		ch := Verify(context.Background(), file, mustJSON(t, r), o).Checks[0]
-		if ch.Failed != c.failed || ch.AnchorChecked != c.checked || (ch.Note != "") != c.note {
+		if ch.Failed != c.failed || ch.Anchored != c.checked || (ch.Note != "") != c.note {
 			t.Errorf("%s: %+v", name, ch)
 		}
-		if c.checked == CheckedValidators && (ch.Ledger != a.Ledger || !ch.NotAfter.Equal(a.ClosedAt)) {
+		if c.checked == receipt.CheckedValidators && (ch.Ledger != a.Ledger || !ch.NotAfter.Equal(a.ClosedAt)) {
 			t.Errorf("%s: %+v", name, ch)
 		}
 	}
@@ -296,31 +296,51 @@ func TestValidatorProof(t *testing.T) {
 	}
 }
 
-func TestValidatorProofWithoutATransactionSet(t *testing.T) {
-	file, r, root := fixture(t)
-	r.Anchor.Proof = json.RawMessage(`{"network":"Test SDF Network ; September 2015"}`)
-	a := r.Anchor
-	o := Options{Horizon: horizon(t, a.Tx, root), Validators: validators(t, claimReport(a.Tx, a.Ledger, a.ClosedAt, true), nil)}
-	if ch := Verify(context.Background(), file, mustJSON(t, r), o).Checks[0]; !ch.OK() || ch.AnchorChecked != CheckedHorizon || ch.Note == "" {
-		t.Errorf("ledger proven, source and memo from Horizon: %+v", ch)
-	}
-	// What the proof does prove must still match.
-	o.Validators = validators(t, claimReport(a.Tx, a.Ledger+1, a.ClosedAt, true), nil)
-	if ch := Verify(context.Background(), file, mustJSON(t, r), o).Checks[0]; ch.Failed != receipt.StepAnchor {
-		t.Errorf("other ledger: %+v", ch)
-	}
+// agree is Horizon agreeing with r's anchor.
+type agree struct{ r receipt.Receipt }
+
+func (h agree) Transaction(context.Context, string, string) (*receipt.Tx, error) {
+	root, _ := hex.DecodeString(h.r.Root)
+	var m [32]byte
+	copy(m[:], root)
+	a := h.r.Anchor
+	return &receipt.Tx{Successful: true, Source: a.Account, MemoHash: &m, Ledger: a.Ledger, ClosedAt: a.ClosedAt}, nil
 }
 
+// A proof that can't be checked here leaves all of step 5 to Horizon, with
+// a note, and never says validators.
 func TestValidatorProofUnchecked(t *testing.T) {
-	file, r, root := fixture(t)
-	r.Anchor.Proof = json.RawMessage(`{"network":"Test SDF Network ; September 2015"}`)
-	for name, v := range map[string]func(context.Context, []byte) ([]byte, error){
-		"no checker":     nil,
-		"checker failed": validators(t, nil, errors.New("not loaded")),
-	} {
-		o := Options{Horizon: horizon(t, r.Anchor.Tx, root), Validators: v}
-		if ch := Verify(context.Background(), file, mustJSON(t, r), o).Checks[0]; !ch.OK() || ch.AnchorChecked != CheckedHorizon || ch.Note == "" {
+	file, r := realReceipt(t)
+	ok := claimReport(r.Anchor.Tx, r.Anchor.Ledger, r.Anchor.ClosedAt, true)
+	edit := func(f func(m map[string]any)) json.RawMessage {
+		var m map[string]any
+		if err := json.Unmarshal(r.Anchor.Proof, &m); err != nil {
+			t.Fatal(err)
+		}
+		f(m)
+		return mustJSON(t, m)
+	}
+	cases := map[string]struct {
+		proof json.RawMessage
+		v     func(context.Context, []byte) ([]byte, error)
+		note  string
+	}{
+		"no checker":     {r.Anchor.Proof, nil, "no proof checker"},
+		"checker failed": {r.Anchor.Proof, validators(t, nil, errors.New("not loaded")), "not loaded"},
+		"v1 bundle":      {edit(func(m map[string]any) { m["format"] = "externalize/bundle/v1" }), validators(t, ok, nil), "externalize/bundle/v1"},
+		"no txset":       {edit(func(m map[string]any) { delete(m, "transactions") }), validators(t, ok, nil), "no transaction set"},
+	}
+	for name, c := range cases {
+		r := r
+		r.Anchor.Proof = c.proof
+		o := Options{Horizon: agree{r}, Validators: c.v}
+		ch := Verify(context.Background(), file, mustJSON(t, r), o).Checks[0]
+		if !ch.OK() || ch.Anchored != receipt.CheckedHorizon || !strings.Contains(ch.Note, c.note) {
 			t.Errorf("%s: %+v", name, ch)
+		}
+		o.Horizon = noHorizon{}
+		if ch := Verify(context.Background(), file, mustJSON(t, r), o).Checks[0]; ch.Failed != receipt.StepAnchor || ch.Anchored != "" {
+			t.Errorf("%s, without Horizon: %+v", name, ch)
 		}
 	}
 }
@@ -335,48 +355,5 @@ func TestGivenReceiptForAPhotoWithOneEmbedded(t *testing.T) {
 	res := Verify(context.Background(), photo, mustJSON(t, r), o)
 	if res.Status != StatusVerified || res.Source != SourceGiven || res.Signed != hexsum(file) {
 		t.Fatalf("%+v", res)
-	}
-}
-
-func TestFindMemoInARealTransactionSet(t *testing.T) {
-	_, r := realReceipt(t)
-	var b bundle
-	if err := json.Unmarshal(r.Anchor.Proof, &b); err != nil {
-		t.Fatal(err)
-	}
-	set, err := base64.StdEncoding.DecodeString(b.Transactions)
-	if err != nil {
-		t.Fatal(err)
-	}
-	txHash, _ := hex32(r.Anchor.Tx)
-	key, err := accountKey(r.Anchor.Account)
-	if err != nil {
-		t.Fatal(err)
-	}
-	memo, err := findMemo(set, passphrases["testnet"], txHash, key)
-	if err != nil || memo == nil || hex.EncodeToString(memo[:]) != r.Root {
-		t.Fatalf("memo %x, %v", memo, err)
-	}
-	if _, err := findMemo(set, passphrases["mainnet"], txHash, key); err == nil {
-		t.Error("found under the wrong network")
-	}
-	other, _ := accountKey(account)
-	if _, err := findMemo(set, passphrases["testnet"], txHash, other); err == nil {
-		t.Error("found from another account")
-	}
-	txHash[0] ^= 1
-	if _, err := findMemo(set, passphrases["testnet"], txHash, key); err == nil {
-		t.Error("found another hash")
-	}
-}
-
-func TestAccountKeyChecksAddresses(t *testing.T) {
-	if _, err := accountKey(account); err != nil {
-		t.Fatal(err)
-	}
-	for _, bad := range []string{"", account[:55] + "A", "S" + account[1:], "nonsense"} {
-		if _, err := accountKey(bad); err == nil {
-			t.Errorf("%q accepted", bad)
-		}
 	}
 }

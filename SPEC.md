@@ -97,7 +97,9 @@ network and fail if they differ.
    SHA-256 of the claim lines.
 4. **The tree:** the leaf hash, `index`, `size` and `proof` recompute `root`.
 5. **The anchor:** on `network`, transaction `tx` exists and was successful,
-   its source is `account`, and its memo hash is `root`.
+   its source is `account`, and its memo hash is `root`. With an
+   `anchor.proof` that can be checked, this is checked against the
+   validators' signatures instead (§8.2).
 6. **The verdict:** report all of the following.
    - "Unchanged since signed by key `key`."
    - "Existed no later than `closed_at` (ledger `ledger`)."
@@ -152,15 +154,51 @@ fails the **signature** step: a receipt never quietly drops to `software`.
 ### 8.2 Validator proof of the anchor
 
 `anchor.proof` is an [Externalize](https://github.com/Externalize-Labs/externalize)
-bundle for the anchor transaction, built with its transaction set, so the
-memo and source are proven too. With a proof, step 5 checks the bundle
-against the validators' signatures instead of trusting Horizon: the
-transaction is `tx`, it succeeded in ledger `ledger`, its source is
-`account`, and its memo hash is `root`. The verdict says which way step 5 was
-checked: `validators` or `horizon`.
+bundle (`externalize/bundle/v2`) for ledger `ledger` that claims
+`{"kind": "transaction", "tx_hash": tx}` and includes the ledger's
+transaction set (`transactions`). With a proof, step 5 is checked against the
+validators' signatures instead of Horizon. The verdict says which way step 5
+was checked: `anchor_checked` is `validators` or `horizon`.
 
-The anchoring service adds the proof once the anchor's ledger is in a history
-archive, a few minutes after it closes. Until then the receipt has no proof.
+What the bundle proves, and how:
+
+- **The ledger header.** `externalize verify --json` (v0.3.0 or later) exits
+  0 only if validators satisfying its trust set (the built-in set for the
+  bundle's network unless `--trust` is given) signed `EXTERNALIZE` for slot
+  `ledger` with the header's `StellarValue`, and for slot `ledger` + 1 with a
+  value whose transaction set (`next_transactions`) names the hash of the
+  header as its previous ledger. So every field of the header is certified.
+  The report's `ledger.sequence` and `ledger.close_time` must equal `ledger`
+  and `closed_at`. The bundle's `network` must be the passphrase of
+  `network`.
+- **Success.** The header commits to the ledger's result set
+  (`txSetResultHash`), so the claim's `succeeded`, read from it, is proven.
+  It must be true.
+- **Inclusion.** The CLI checks `transactions` against the signed transaction
+  set hash and that `tx` is in it.
+- **Source and memo.** The CLI doesn't report them. The verifier finds, in
+  `transactions`, the bytes whose hash is `tx`: SHA-256 of the network ID,
+  `ENVELOPE_TYPE_TX` and the transaction's XDR. Only that transaction hashes
+  to `tx`, so its source must be `account` and its memo `MEMO_HASH` `root`.
+  Only a plain v1 envelope with an Ed25519 source is accepted; a fee-bump
+  anchor fails.
+
+Nothing in step 5 comes from Horizon when the proof is checked. What is
+trusted instead is the verifier's trust set; the CLI's built-in testnet set
+is SDF's three validators, any 2 of 3.
+
+A proof that is rejected, or doesn't match, fails step 5: Horizon can't
+overrule it. A proof that can't be checked leaves all of step 5 to Horizon:
+the verdict says `horizon` and why in `anchor_note`, and never `validators`.
+That is the case when the verifier can't check proofs (no `externalize`, one
+older than v0.3.0, or it can't run), when the bundle is in another format
+(`externalize/bundle/v1` certified only the `StellarValue`, so the rest of
+the header, the result set with it, could be forged), or when it has no
+`transactions`.
+
+The anchoring service adds the proof, and sets `v` to 1, once ledger
+`ledger` + 1 is in a history archive, a few minutes after the anchor's
+ledger closes. Until then the receipt has no proof.
 
 ### 8.3 Embedded receipts
 

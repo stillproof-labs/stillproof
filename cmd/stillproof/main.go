@@ -28,10 +28,12 @@ import (
 const usage = `stillproof signs and verifies Stillproof claims.
 
 Usage:
-  stillproof verify [--json] [--app-id ID]... FILE [RECEIPT]
+  stillproof verify [--json] [--app-id ID]... [--externalize PATH] FILE [RECEIPT]
                                               check FILE against RECEIPT (SPEC.md §6), or a
                                               JPEG against its embedded receipt (§8.3);
-                                              --app-id: accepted App Attest TEAMID.bundle
+                                              --app-id: accepted App Attest TEAMID.bundle;
+                                              a validator proof (§8.2) is checked with the
+                                              externalize CLI (--externalize, default PATH)
   stillproof embed --key KEYFILE PHOTO RECEIPT
                                               print PHOTO with RECEIPT embedded as C2PA (§8.3)
   stillproof keygen KEYFILE                   write a new software P-256 key (hex)
@@ -79,10 +81,12 @@ func verify(args []string, out io.Writer) error {
 		o.Attest.AppIDs = append(o.Attest.AppIDs, s)
 		return nil
 	})
+	ex := fs.String("externalize", "", "externalize CLI that checks validator proofs (default: externalize on PATH)")
 	_ = fs.Parse(args)
 	if fs.NArg() != 1 && fs.NArg() != 2 {
-		return errors.New("usage: stillproof verify [--json] [--app-id ID]... FILE [RECEIPT]")
+		return errors.New("usage: stillproof verify [--json] [--app-id ID]... [--externalize PATH] FILE [RECEIPT]")
 	}
+	o.Proofs = receipt.Externalize{Path: *ex}
 	file, err := os.ReadFile(fs.Arg(0))
 	if err != nil {
 		return err
@@ -123,6 +127,14 @@ func printVerdict(out io.Writer, v receipt.Verdict) {
 	}
 	fmt.Fprintf(out, "  unchanged since signed by key %s… (%s)\n", v.Key[:18], kind)
 	fmt.Fprintf(out, "  existed no later than %s (ledger %d, %s)\n", v.NotAfter.Format(time.RFC3339), v.Ledger, v.Network)
+	if v.Anchored == receipt.CheckedValidators {
+		fmt.Fprintf(out, "  anchor checked against the validators' signatures\n")
+	} else {
+		fmt.Fprintf(out, "  anchor checked through Horizon\n")
+	}
+	if v.Note != "" {
+		fmt.Fprintf(out, "  note: %s\n", v.Note)
+	}
 	fmt.Fprintf(out, "  device says captured %s\n", v.Captured.Format(time.RFC3339))
 	fmt.Fprintf(out, "  %s\n", v.Caveat)
 }

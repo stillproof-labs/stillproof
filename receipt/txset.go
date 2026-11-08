@@ -1,4 +1,4 @@
-package webverify
+package receipt
 
 import (
 	"bytes"
@@ -38,6 +38,10 @@ func crc16(b []byte) uint16 {
 	return c
 }
 
+// maxTxSize bounds the search for a transaction's end. Stellar limits a
+// transaction to well under this.
+const maxTxSize = 1 << 20
+
 // findMemo finds, in the XDR of a transaction set, the transaction from key
 // whose hash under passphrase is txHash, and returns its MEMO_HASH (nil for
 // any other memo). The hash commits to the source and memo, so whatever
@@ -62,6 +66,9 @@ func findMemo(set []byte, passphrase string, txHash [32]byte, key []byte) (*[32]
 		h.Write(netID[:])
 		h.Write([]byte{0, 0, 0, 2})
 		tx := set[start:]
+		if len(tx) > maxTxSize {
+			tx = tx[:maxTxSize]
+		}
 		h.Write(tx[:pre])
 		for n := pre; n+4 <= len(tx); n += 4 {
 			h.Write(tx[n : n+4])
