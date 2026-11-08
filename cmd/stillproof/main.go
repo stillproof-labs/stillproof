@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/stillproof-labs/stillproof/attest"
 	"github.com/stillproof-labs/stillproof/claim"
 	"github.com/stillproof-labs/stillproof/receipt"
 )
@@ -26,7 +27,9 @@ import (
 const usage = `stillproof signs and verifies Stillproof claims.
 
 Usage:
-  stillproof verify [--json] FILE RECEIPT     check FILE against RECEIPT (SPEC.md §6)
+  stillproof verify [--json] [--app-id ID]... FILE RECEIPT
+                                              check FILE against RECEIPT (SPEC.md §6);
+                                              --app-id: accepted App Attest TEAMID.bundle
   stillproof keygen KEYFILE                   write a new software P-256 key (hex)
   stillproof sign --key KEYFILE FILE          print a signed claim for FILE
 
@@ -64,9 +67,14 @@ var errFailed = errors.New("verification failed")
 func verify(args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("verify", flag.ExitOnError)
 	asJSON := fs.Bool("json", false, "print the verdict as JSON")
+	var o receipt.VerifyOptions
+	fs.Func("app-id", "accepted App Attest app id, TEAMID.bundle (repeatable)", func(s string) error {
+		o.Attest.AppIDs = append(o.Attest.AppIDs, s)
+		return nil
+	})
 	_ = fs.Parse(args)
 	if fs.NArg() != 2 {
-		return errors.New("usage: stillproof verify [--json] FILE RECEIPT")
+		return errors.New("usage: stillproof verify [--json] [--app-id ID]... FILE RECEIPT")
 	}
 	file, err := os.ReadFile(fs.Arg(0))
 	if err != nil {
@@ -82,7 +90,7 @@ func verify(args []string, out io.Writer) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	v := receipt.Verify(ctx, file, r, receipt.Horizon{})
+	v := receipt.VerifyWith(ctx, file, r, receipt.Horizon{}, o)
 	if *asJSON {
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
@@ -102,7 +110,11 @@ func printVerdict(out io.Writer, v receipt.Verdict) {
 		return
 	}
 	fmt.Fprintf(out, "VERIFIED\n")
-	fmt.Fprintf(out, "  unchanged since signed by key %s… (%s key)\n", v.Key[:18], v.Level)
+	kind := "software key, not attested"
+	if v.Level != attest.LevelSoftware {
+		kind = "hardware key, attested " + v.Level
+	}
+	fmt.Fprintf(out, "  unchanged since signed by key %s… (%s)\n", v.Key[:18], kind)
 	fmt.Fprintf(out, "  existed no later than %s (ledger %d, %s)\n", v.NotAfter.Format(time.RFC3339), v.Ledger, v.Network)
 	fmt.Fprintf(out, "  device says captured %s\n", v.Captured.Format(time.RFC3339))
 	fmt.Fprintf(out, "  %s\n", v.Caveat)
