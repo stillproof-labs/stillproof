@@ -3,3 +3,7 @@
 *.db
 *.db-*
 /site/verify.wasm
+/web/verify.wasm
+/web/wasm_exec.js
+/web/vendor/externalize/*
+!/web/vendor/externalize/NOTICE
