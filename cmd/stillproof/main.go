@@ -210,7 +210,7 @@ func embedReceipt(args []string, out io.Writer) error {
 }
 
 func readKey(path string) (*ecdsa.PrivateKey, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) //nolint:gosec // G304: the path the user asked for
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +227,7 @@ func readKey(path string) (*ecdsa.PrivateKey, error) {
 
 func readReceipt(path string) (receipt.Receipt, error) {
 	var r receipt.Receipt
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) //nolint:gosec // G304: the path the user asked for
 	if err != nil {
 		return r, err
 	}
