@@ -3,7 +3,9 @@ package attest
 
 import (
 	"crypto/x509"
+	"encoding/base64"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -39,6 +41,10 @@ type Options struct {
 	AppIDs       []string       // apple-app-attest: accepted "TEAMID.bundle" ids
 	AndroidRoots *x509.CertPool // nil: Google's hardware attestation roots
 	AppleRoots   *x509.CertPool // nil: Apple's App Attestation root
+
+	// AllowDevelopment accepts App Attest objects from the development
+	// environment.
+	AllowDevelopment bool
 }
 
 // ErrAttestation means an attestation doesn't show that key is in hardware.
@@ -46,6 +52,57 @@ var ErrAttestation = errors.New("attestation")
 
 // Verify checks that a attests key (65 bytes, SEC1 uncompressed) and returns
 // its protection level.
-func Verify(a Attestation, key []byte, o Options) (string, error) {
-	return "", errors.Join(ErrAttestation, errors.New("not implemented"))
+//
+// Neither kind is checked for revocation: Google's attestation status list
+// and Apple's fraud metric are out of scope.
+func Verify(a Attestation, key []byte, o Options) (level string, err error) {
+	switch a.Kind {
+	case KindAndroidKey:
+		level, err = verifyAndroid(a, key, []byte(Challenge), o)
+	case KindAppleAppAttest:
+		level, err = verifyApple(a, key, o)
+	default:
+		err = fmt.Errorf("unknown kind %q", a.Kind)
+	}
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", ErrAttestation, err)
+	}
+	return level, nil
+}
+
+func (o Options) now() time.Time {
+	if o.Now.IsZero() {
+		return time.Now()
+	}
+	return o.Now
+}
+
+// verifyChain parses certs (leaf first) and checks that they chain to roots
+// at now. It returns the leaf.
+func verifyChain(certs [][]byte, roots *x509.CertPool, now time.Time) (*x509.Certificate, error) {
+	if len(certs) == 0 {
+		return nil, errors.New("empty certificate chain")
+	}
+	inter := x509.NewCertPool()
+	var leaf *x509.Certificate
+	for i, der := range certs {
+		c, err := x509.ParseCertificate(der)
+		if err != nil {
+			return nil, fmt.Errorf("certificate %d: %w", i, err)
+		}
+		if i == 0 {
+			leaf = c
+		} else {
+			inter.AddCert(c)
+		}
+	}
+	_, err := leaf.Verify(x509.VerifyOptions{
+		Roots: roots, Intermediates: inter, CurrentTime: now,
+		KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
+	})
+	return leaf, err
+}
+
+func decodeB64(s string) ([]byte, error) {
+	return base64.StdEncoding.DecodeString(s)
 }
