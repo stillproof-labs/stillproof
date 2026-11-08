@@ -2,15 +2,26 @@ package receipt
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/stillproof-labs/stillproof/attest"
+	"github.com/stillproof-labs/stillproof/claim"
 )
 
 const account = "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"
@@ -116,5 +127,43 @@ func TestHorizonReadsTheMemoHash(t *testing.T) {
 	}
 	if _, err := h.Transaction(context.Background(), "mainnet", "aa"); err == nil {
 		t.Fatal("unknown network accepted")
+	}
+}
+
+func TestVerifyWithAttestation(t *testing.T) {
+	file, r, l := fixture(t)
+	s, err := claim.Parse([]byte(r.Claim))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A test root that signs an Android leaf for the claim key.
+	rk, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	rt := &x509.Certificate{SerialNumber: big.NewInt(1), NotBefore: time.Unix(0, 0), NotAfter: time.Now().AddDate(1, 0, 0), IsCA: true, BasicConstraintsValid: true}
+	rootDER, _ := x509.CreateCertificate(rand.Reader, rt, rt, &rk.PublicKey, rk)
+	rootCert, _ := x509.ParseCertificate(rootDER)
+	pool := x509.NewCertPool()
+	pool.AddCert(rootCert)
+	purposes, _ := asn1.MarshalWithParams([]int{2}, "set")
+	purpose, _ := asn1.Marshal(asn1.RawValue{Class: asn1.ClassContextSpecific, Tag: 1, IsCompound: true, Bytes: purposes})
+	desc, _ := asn1.Marshal(struct {
+		V1        int
+		L1        asn1.Enumerated
+		V2        int
+		L2        asn1.Enumerated
+		Challenge []byte
+		ID        []byte
+		SW, HW    asn1.RawValue
+	}{300, 2, 300, 2, []byte(attest.Challenge), []byte{}, asn1.RawValue{Tag: asn1.TagSequence, IsCompound: true}, asn1.RawValue{Tag: asn1.TagSequence, IsCompound: true, Bytes: purpose}})
+	lt := &x509.Certificate{SerialNumber: big.NewInt(2), NotBefore: time.Unix(0, 0), NotAfter: time.Now().AddDate(1, 0, 0),
+		ExtraExtensions: []pkix.Extension{{Id: asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 1, 17}, Value: desc}}}
+	leafDER, _ := x509.CreateCertificate(rand.Reader, lt, rootCert, s.Key, rk)
+	r.Attestation = &attest.Attestation{Kind: attest.KindAndroidKey, Chain: []string{base64.StdEncoding.EncodeToString(leafDER)}}
+
+	if v := VerifyWith(context.Background(), file, r, l, VerifyOptions{Attest: attest.Options{AndroidRoots: pool}}); !v.OK() || v.Level != attest.LevelStrongBox {
+		t.Fatalf("attested: %+v", v)
+	}
+	// With the built-in roots the test root is untrusted: the signature step fails.
+	if v := Verify(context.Background(), file, r, l); v.Failed != StepSignature || !strings.Contains(v.Reason, "attestation") {
+		t.Fatalf("untrusted: %+v", v)
 	}
 }

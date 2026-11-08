@@ -89,8 +89,18 @@ type Verdict struct {
 // OK reports whether every check passed.
 func (v Verdict) OK() bool { return v.Failed == "" }
 
+// VerifyOptions configures VerifyWith. The zero value is what Verify uses.
+type VerifyOptions struct {
+	Attest attest.Options // for r.Attestation
+}
+
 // Verify checks file against r, reading the anchor transaction through l.
 func Verify(ctx context.Context, file []byte, r Receipt, l Lookup) Verdict {
+	return VerifyWith(ctx, file, r, l, VerifyOptions{})
+}
+
+// VerifyWith is Verify with options.
+func VerifyWith(ctx context.Context, file []byte, r Receipt, l Lookup, o VerifyOptions) Verdict {
 	v := Verdict{Caveat: Caveat}
 	fail := func(s Step, format string, a ...any) Verdict {
 		v.Failed, v.Reason = s, fmt.Sprintf(format, a...)
@@ -105,7 +115,7 @@ func Verify(ctx context.Context, file []byte, r Receipt, l Lookup) Verdict {
 	}
 	v.Signed = &s
 	pub, _ := s.Key.Bytes()
-	v.Key, v.Level = hex.EncodeToString(pub), "software"
+	v.Key, v.Level = hex.EncodeToString(pub), attest.LevelSoftware
 	v.Captured = time.UnixMilli(s.Captured).UTC()
 
 	if sha256.Sum256(file) != s.SHA256 {
@@ -113,6 +123,11 @@ func Verify(ctx context.Context, file []byte, r Receipt, l Lookup) Verdict {
 	}
 	if err := s.Verify(); err != nil {
 		return fail(StepSignature, "%v", err)
+	}
+	if r.Attestation != nil {
+		if v.Level, err = attest.Verify(*r.Attestation, pub, o.Attest); err != nil {
+			return fail(StepSignature, "%v", err)
+		}
 	}
 
 	root, err := hash32(r.Root)
