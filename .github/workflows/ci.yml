@@ -41,6 +41,28 @@ jobs:
           echo "C2PATOOL=$RUNNER_TEMP/c2patool/c2patool" >> "$GITHUB_ENV"
       - run: go test -count=1 -run TestC2patool -v ./embed
 
+  # The receipt tests that run the real externalize CLI on the testnet
+  # fixtures (SPEC.md §8.2). They skip in the job above, which has no CLI.
+  proof:
+    runs-on: ubuntu-latest
+    env:
+      EXTERNALIZE: v0.2.0
+      EXTERNALIZE_SHA256: e41fcdaee9a72e2e5021af8e41e020643694d4b7a324d536e2ae1ffb77ff7f60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: install externalize
+        run: |
+          name="externalize-${EXTERNALIZE}-x86_64-unknown-linux-gnu"
+          curl -fsSL -o "$RUNNER_TEMP/x.tar.gz" "https://github.com/Externalize-Labs/externalize/releases/download/${EXTERNALIZE}/${name}.tar.gz"
+          echo "${EXTERNALIZE_SHA256}  $RUNNER_TEMP/x.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/x.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/${name}" >> "$GITHUB_PATH"
+      - run: externalize --version
+      - run: go test -count=1 -v -run 'Externalize|Real|ResultSet' ./receipt/
+
   lint:
     runs-on: ubuntu-latest
     steps:
