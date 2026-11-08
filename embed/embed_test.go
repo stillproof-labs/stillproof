@@ -43,8 +43,10 @@ func seg(marker byte, payload []byte) []byte {
 }
 
 var (
-	jfif = seg(markerAPP0, []byte("JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"))
-	exif = seg(markerAPP1, []byte("Exif\x00\x00MM\x00\x2a\x00\x00\x00\x08\x00\x00\x00\x00\x00\x00"))
+	// JFIF 1.1, no density, no thumbnail.
+	jfif = seg(markerAPP0, append([]byte("JFIF"), 0, 1, 1, 0, 0, 1, 0, 1, 0, 0))
+	// Exif with a big-endian TIFF header and one empty IFD.
+	exif = seg(markerAPP1, append([]byte("Exif"), 0, 0, 'M', 'M', 0, 42, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0))
 )
 
 // withHeaders puts headers right after SOI.
