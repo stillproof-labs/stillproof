@@ -21,18 +21,23 @@ import (
 
 	"github.com/stillproof-labs/stillproof/attest"
 	"github.com/stillproof-labs/stillproof/claim"
+	"github.com/stillproof-labs/stillproof/embed"
 	"github.com/stillproof-labs/stillproof/receipt"
 )
 
 const usage = `stillproof signs and verifies Stillproof claims.
 
 Usage:
-  stillproof verify [--json] [--app-id ID]... FILE RECEIPT
-                                              check FILE against RECEIPT (SPEC.md §6);
+  stillproof verify [--json] [--app-id ID]... FILE [RECEIPT]
+                                              check FILE against RECEIPT (SPEC.md §6), or a
+                                              JPEG against its embedded receipt (§8.3);
                                               --app-id: accepted App Attest TEAMID.bundle
+  stillproof embed --key KEYFILE PHOTO RECEIPT
+                                              print PHOTO with RECEIPT embedded as C2PA (§8.3)
   stillproof keygen KEYFILE                   write a new software P-256 key (hex)
   stillproof sign --key KEYFILE FILE          print a signed claim for FILE
 
+embed signs the C2PA manifest with KEYFILE and a self-signed certificate.
 keygen and sign are for development: the app keeps its key on the phone.
 `
 
@@ -49,6 +54,8 @@ func main() {
 		err = keygen(os.Args[2:])
 	case "sign":
 		err = sign(os.Args[2:], os.Stdout)
+	case "embed":
+		err = embedReceipt(os.Args[2:], os.Stdout)
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 		return
@@ -73,20 +80,20 @@ func verify(args []string, out io.Writer) error {
 		return nil
 	})
 	_ = fs.Parse(args)
-	if fs.NArg() != 2 {
-		return errors.New("usage: stillproof verify [--json] [--app-id ID]... FILE RECEIPT")
+	if fs.NArg() != 1 && fs.NArg() != 2 {
+		return errors.New("usage: stillproof verify [--json] [--app-id ID]... FILE [RECEIPT]")
 	}
 	file, err := os.ReadFile(fs.Arg(0))
 	if err != nil {
 		return err
 	}
-	raw, err := os.ReadFile(fs.Arg(1))
-	if err != nil {
-		return err
-	}
 	var r receipt.Receipt
-	if err := json.Unmarshal(raw, &r); err != nil {
-		return fmt.Errorf("receipt: %w", err)
+	if fs.NArg() == 1 {
+		if r, file, err = embed.Extract(file); err != nil {
+			return fmt.Errorf("embedded receipt: %w", err)
+		}
+	} else if r, err = readReceipt(fs.Arg(1)); err != nil {
+		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -149,17 +156,9 @@ func sign(args []string, out io.Writer) error {
 	if *keyPath == "" || fs.NArg() != 1 {
 		return errors.New("usage: stillproof sign --key KEYFILE FILE")
 	}
-	raw, err := os.ReadFile(*keyPath)
+	key, err := readKey(*keyPath)
 	if err != nil {
 		return err
-	}
-	d, err := hex.DecodeString(strings.TrimSpace(string(raw)))
-	if err != nil {
-		return fmt.Errorf("key: %w", err)
-	}
-	key, err := ecdsa.ParseRawPrivateKey(elliptic.P256(), d)
-	if err != nil {
-		return fmt.Errorf("key: %w", err)
 	}
 	file, err := os.ReadFile(fs.Arg(0))
 	if err != nil {
@@ -177,4 +176,63 @@ func sign(args []string, out io.Writer) error {
 	}
 	_, err = out.Write(s.Bytes())
 	return err
+}
+
+func embedReceipt(args []string, out io.Writer) error {
+	fs := flag.NewFlagSet("embed", flag.ExitOnError)
+	keyPath := fs.String("key", "", "key file from stillproof keygen")
+	_ = fs.Parse(args)
+	if *keyPath == "" || fs.NArg() != 2 {
+		return errors.New("usage: stillproof embed --key KEYFILE PHOTO RECEIPT > OUT.jpg")
+	}
+	key, err := readKey(*keyPath)
+	if err != nil {
+		return err
+	}
+	photo, err := os.ReadFile(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	r, err := readReceipt(fs.Arg(1))
+	if err != nil {
+		return err
+	}
+	chain, err := embed.SelfSigned(key)
+	if err != nil {
+		return err
+	}
+	b, err := embed.Embed(photo, r, key, chain)
+	if err != nil {
+		return err
+	}
+	_, err = out.Write(b)
+	return err
+}
+
+func readKey(path string) (*ecdsa.PrivateKey, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	d, err := hex.DecodeString(strings.TrimSpace(string(raw)))
+	if err != nil {
+		return nil, fmt.Errorf("key: %w", err)
+	}
+	key, err := ecdsa.ParseRawPrivateKey(elliptic.P256(), d)
+	if err != nil {
+		return nil, fmt.Errorf("key: %w", err)
+	}
+	return key, nil
+}
+
+func readReceipt(path string) (receipt.Receipt, error) {
+	var r receipt.Receipt
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return r, err
+	}
+	if err := json.Unmarshal(raw, &r); err != nil {
+		return r, fmt.Errorf("receipt: %w", err)
+	}
+	return r, nil
 }
