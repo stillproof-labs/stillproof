@@ -13,7 +13,8 @@ This repository holds the protocol and the tools for checking it:
 | [`SPEC.md`](SPEC.md) | The protocol: claims, signatures, the Merkle tree, the anchor transaction and receipts |
 | [`testdata/vectors.json`](testdata/vectors.json) | Test vectors every implementation must reproduce |
 | `claim`, `merkle`, `receipt` | Go packages for the spec, including full verification against Horizon |
-| `cmd/stillproof` | `stillproof verify FILE RECEIPT`, plus `keygen` and `sign` for development |
+| `embed` | Receipts embedded in JPEGs as a C2PA manifest (SPEC.md §8.3) |
+| `cmd/stillproof` | `stillproof verify FILE [RECEIPT]` and `embed`, plus `keygen` and `sign` for development |
 
 The rest of the project:
 
