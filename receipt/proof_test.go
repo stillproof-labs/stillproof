@@ -11,8 +11,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -20,8 +20,8 @@ import (
 	"github.com/stillproof-labs/stillproof/claim"
 )
 
-// A real testnet anchor, ledger 5565106, and its bundle built by
-// exnode --network testnet --txset. The bundle also claims realOtherTx, from
+// A real testnet anchor, ledger 5565106, and its v2 bundle built by
+// exnode bundle --network testnet --txset. The bundle also claims realOtherTx, from
 // another account.
 const (
 	realTx      = "7b41ee34a19cc637d7cb977c2bd4dbdf8482738c257b44dc7cd7e1d67a540510"
@@ -72,10 +72,15 @@ func realReceiptTx(t *testing.T, r Receipt) fakeLookup {
 	return fakeLookup{r.Anchor.Tx: {Successful: true, Source: r.Anchor.Account, MemoHash: &root, Ledger: r.Anchor.Ledger, ClosedAt: r.Anchor.ClosedAt}}
 }
 
+// needCLI skips the test unless externalize v0.3.0 or later is on PATH, or
+// fails it if NEED_EXTERNALIZE is set, as in CI.
 func needCLI(t *testing.T) {
 	t.Helper()
-	if _, err := exec.LookPath("externalize"); err != nil {
-		t.Skip("externalize not on PATH")
+	if err := (Externalize{}).version(context.Background()); err != nil {
+		if os.Getenv("NEED_EXTERNALIZE") != "" {
+			t.Fatal(err)
+		}
+		t.Skip(err)
 	}
 }
 
@@ -239,19 +244,86 @@ func TestARealReceiptWithoutTheCLIUsesHorizon(t *testing.T) {
 	}
 }
 
+// A v1 proof is never checked: step 5 goes to Horizon, with a note, even
+// with a CLI that could read it.
+func TestARealReceiptWithAV1ProofUsesHorizon(t *testing.T) {
+	file, r := realReceipt(t)
+	r.Anchor.Proof = edit(t, r.Anchor.Proof, func(m map[string]any) {
+		m["format"] = "externalize/bundle/v1"
+		delete(m, "next_scp")
+		delete(m, "next_transactions")
+	})
+	o := VerifyOptions{Proofs: Externalize{}}
+	v := VerifyWith(context.Background(), file, r, realReceiptTx(t, r), o)
+	if !v.OK() || v.Anchored != CheckedHorizon || !strings.Contains(v.Note, "externalize/bundle/v1") {
+		t.Fatalf("%+v", v)
+	}
+	if v := VerifyWith(context.Background(), file, r, fakeLookup{}, o); v.Failed != StepAnchor || v.Anchored != "" {
+		t.Fatalf("without Horizon: %+v", v)
+	}
+}
+
 func TestExternalizeChecksTheBundleBeforeRunning(t *testing.T) {
 	_, raw := realBundle(t)
 	cli := Externalize{Path: "no-such-externalize"} // never reached
-	for name, a := range map[string]Anchor{
-		"not json":      {Network: "testnet", Account: realAccount, Tx: realTx, Proof: json.RawMessage(`[`)},
-		"other network": {Network: "mainnet", Account: realAccount, Tx: realTx, Proof: raw},
-		"bad account":   {Network: "testnet", Account: "G", Tx: realTx, Proof: raw},
-		"no txset": {Network: "testnet", Account: realAccount, Tx: realTx, Proof: edit(t, raw, func(m map[string]any) {
+	for name, c := range map[string]struct {
+		a         Anchor
+		unchecked bool
+	}{
+		"not json":      {Anchor{Network: "testnet", Account: realAccount, Tx: realTx, Proof: json.RawMessage(`[`)}, false},
+		"other network": {Anchor{Network: "mainnet", Account: realAccount, Tx: realTx, Proof: raw}, false},
+		"bad account":   {Anchor{Network: "testnet", Account: "G", Tx: realTx, Proof: raw}, false},
+		"v1": {Anchor{Network: "testnet", Account: realAccount, Tx: realTx, Proof: edit(t, raw, func(m map[string]any) {
+			m["format"] = "externalize/bundle/v1"
+		})}, true},
+		"no format": {Anchor{Network: "testnet", Account: realAccount, Tx: realTx, Proof: edit(t, raw, func(m map[string]any) {
+			delete(m, "format")
+		})}, true},
+		"no txset": {Anchor{Network: "testnet", Account: realAccount, Tx: realTx, Proof: edit(t, raw, func(m map[string]any) {
 			delete(m, "transactions")
-		})},
+		})}, true},
 	} {
-		if _, err := cli.Check(context.Background(), a); err == nil || errors.Is(err, ErrUnchecked) {
+		_, err := cli.Check(context.Background(), c.a)
+		if err == nil || errors.Is(err, ErrUnchecked) != c.unchecked || strings.Contains(err.Error(), "no-such-externalize") {
 			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+// TestMain lets the test binary stand in for the externalize CLI: with
+// FAKE_EXTERNALIZE set, it prints that as its version and rejects every
+// bundle, as v0.2.0 rejects v2 bundles.
+func TestMain(m *testing.M) {
+	if v := os.Getenv("FAKE_EXTERNALIZE"); v != "" {
+		if len(os.Args) > 1 && os.Args[1] == "--version" {
+			fmt.Println(v)
+			os.Exit(0)
+		}
+		fmt.Println(`{"verified":false,"error":"invalid bundle: unknown field next_scp"}`)
+		os.Exit(1)
+	}
+	os.Exit(m.Run())
+}
+
+func TestExternalizeNeedsAV2CLI(t *testing.T) {
+	_, raw := realBundle(t)
+	a := Anchor{Network: "testnet", Account: realAccount, Tx: realTx, Proof: raw}
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for v, unchecked := range map[string]bool{
+		"externalize 0.2.0":  true,
+		"externalize 0.1.1":  true,
+		"something else":     true,
+		"externalize 0.3.0":  false, // so its rejection counts
+		"externalize 1.0.0":  false,
+		"externalize 0.10.2": false,
+	} {
+		t.Setenv("FAKE_EXTERNALIZE", v)
+		_, err := Externalize{Path: self}.Check(context.Background(), a)
+		if err == nil || errors.Is(err, ErrUnchecked) != unchecked {
+			t.Errorf("%s: %v", v, err)
 		}
 	}
 }
@@ -271,15 +343,19 @@ func TestExternalizeCLI(t *testing.T) {
 		t.Fatalf("%+v", tx)
 	}
 
+	proof := func(f func(m map[string]any)) json.RawMessage { return edit(t, raw, f) }
 	bad := map[string]Anchor{
-		"other account":  {Network: "testnet", Account: account, Tx: realTx, Proof: raw},
-		"other claimed":  {Network: "testnet", Account: realAccount, Tx: realOtherTx, Proof: raw},
-		"unclaimed tx":   {Network: "testnet", Account: realAccount, Tx: strings.Repeat("ab", 32), Proof: raw},
-		"not a bundle":   {Network: "testnet", Account: realAccount, Tx: realTx, Proof: json.RawMessage(`{"network":"Test SDF Network ; September 2015","transactions":"AAAA"}`)},
-		"forged header":  {Network: "testnet", Account: realAccount, Tx: realTx, Proof: edit(t, raw, func(m map[string]any) { m["ledger"] = flipBase64(t, m["ledger"].(string), 40) })},
-		"forged memo":    {Network: "testnet", Account: realAccount, Tx: realTx, Proof: edit(t, raw, func(m map[string]any) { flipMemo(t, m, realMemo) })},
-		"forged txset":   {Network: "testnet", Account: realAccount, Tx: realTx, Proof: edit(t, raw, func(m map[string]any) { m["transactions"] = b.Transactions[:len(b.Transactions)-8] + "AAAAAAA=" })},
-		"forged results": {Network: "testnet", Account: realAccount, Tx: realTx, Proof: edit(t, raw, func(m map[string]any) { m["results"] = flipBase64(t, m["results"].(string), 12) })},
+		"other account":   {Network: "testnet", Account: account, Tx: realTx, Proof: raw},
+		"other claimed":   {Network: "testnet", Account: realAccount, Tx: realOtherTx, Proof: raw},
+		"unclaimed tx":    {Network: "testnet", Account: realAccount, Tx: strings.Repeat("ab", 32), Proof: raw},
+		"not a bundle":    {Network: "testnet", Account: realAccount, Tx: realTx, Proof: json.RawMessage(`{"format":"externalize/bundle/v2","network":"Test SDF Network ; September 2015","transactions":"AAAA"}`)},
+		"forged header":   {Network: "testnet", Account: realAccount, Tx: realTx, Proof: proof(func(m map[string]any) { m["ledger"] = flipBase64(t, m["ledger"].(string), 40) })},
+		"forged memo":     {Network: "testnet", Account: realAccount, Tx: realTx, Proof: proof(func(m map[string]any) { flipMemo(t, m, realMemo) })},
+		"forged txset":    {Network: "testnet", Account: realAccount, Tx: realTx, Proof: proof(func(m map[string]any) { m["transactions"] = b.Transactions[:len(b.Transactions)-8] + "AAAAAAA=" })},
+		"forged results":  {Network: "testnet", Account: realAccount, Tx: realTx, Proof: proof(func(m map[string]any) { m["results"] = flipBase64(t, m["results"].(string), 12) })},
+		"next scp is N's": {Network: "testnet", Account: realAccount, Tx: realTx, Proof: proof(func(m map[string]any) { m["next_scp"] = m["scp"] })},
+		"forged next set": {Network: "testnet", Account: realAccount, Tx: realTx, Proof: proof(func(m map[string]any) { m["next_transactions"] = flipBase64(t, m["next_transactions"].(string), 40) })},
+		"no next scp":     {Network: "testnet", Account: realAccount, Tx: realTx, Proof: proof(func(m map[string]any) { delete(m, "next_scp") })},
 	}
 	for name, a := range bad {
 		if _, err := (Externalize{}).Check(context.Background(), a); err == nil || errors.Is(err, ErrUnchecked) {
@@ -288,14 +364,13 @@ func TestExternalizeCLI(t *testing.T) {
 	}
 }
 
-// TestTheResultSetIsNotSigned pins down what a bundle proves. The
-// validators sign the ledger's StellarValue (transaction set hash, close
-// time), not the rest of the header. The result set is committed only by
-// the header's txSetResultHash, so anyone can rewrite it, recompute that
-// hash and the header hash, and the CLI still accepts the bundle. That is
-// why Check reads source and memo from the transaction set, never trusts a
-// bundle without one, and why success isn't proven by the signatures.
-func TestTheResultSetIsNotSigned(t *testing.T) {
+// TestTheResultSetIsSigned pins down what a v2 bundle proves. The
+// validators sign ledger N's StellarValue, and ledger N+1's, whose
+// transaction set commits to the hash of header N. So a result set rewritten
+// with a recomputed txSetResultHash and header hash no longer verifies,
+// unlike with v1 bundles: success is proven, and so is a transaction claimed
+// without a transaction set.
+func TestTheResultSetIsSigned(t *testing.T) {
 	needCLI(t)
 	_, raw := realBundle(t)
 	tx, _ := hash32(realTx)
@@ -306,8 +381,7 @@ func TestTheResultSetIsNotSigned(t *testing.T) {
 			copy(results[i:], []byte{0xff, 0xff, 0xff, 0xff}) // txSUCCESS to txFAILED; the arms have the same shape
 		})
 	})
-	got, err := Externalize{}.Check(context.Background(), Anchor{Network: "testnet", Account: realAccount, Tx: realTx, Proof: failed})
-	if err != nil || got.Successful || hex.EncodeToString(got.MemoHash[:]) != realMemo {
+	if got, err := (Externalize{}).Check(context.Background(), Anchor{Network: "testnet", Account: realAccount, Tx: realTx, Proof: failed}); err == nil || errors.Is(err, ErrUnchecked) {
 		t.Fatalf("forged failure: %+v %v", got, err)
 	}
 
@@ -317,13 +391,9 @@ func TestTheResultSetIsNotSigned(t *testing.T) {
 		delete(m, "transactions")
 		m["claims"] = []any{map[string]any{"kind": "transaction", "tx_hash": hex.EncodeToString(fake[:])}}
 	})
-	rep, err := Externalize{}.run(context.Background(), invented)
-	if err != nil || len(rep.Claims) != 1 || rep.Claims[0].TxHash != hex.EncodeToString(fake[:]) {
-		t.Fatalf("the CLI no longer accepts an invented transaction without a txset (good news: update SPEC §8.2): %+v %v", rep, err)
-	}
-	a := Anchor{Network: "testnet", Account: realAccount, Tx: hex.EncodeToString(fake[:]), Proof: invented}
-	if _, err := (Externalize{}).Check(context.Background(), a); err == nil {
-		t.Fatal("Check accepted a bundle without a transaction set")
+	rep, err := Externalize{}.verify(context.Background(), invented)
+	if err != nil || !strings.Contains(string(rep), `"verified":false`) {
+		t.Fatalf("the CLI accepts an invented transaction: %s %v", rep, err)
 	}
 }
 
