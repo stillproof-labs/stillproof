@@ -203,7 +203,11 @@ func claimReport(tx string, ledger uint32, closed time.Time, succeeded bool) map
 // ledger's transaction set, and the photo it is for.
 func realReceipt(t *testing.T) ([]byte, receipt.Receipt) {
 	t.Helper()
-	file, err := os.ReadFile("../../testdata/testnet-photo.bin")
+	h, err := os.ReadFile("../../testdata/testnet-photo.hex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := hex.DecodeString(strings.Join(strings.Fields(string(h)), ""))
 	if err != nil {
 		t.Fatal(err)
 	}
