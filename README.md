@@ -15,6 +15,7 @@ This repository holds the protocol and the tools for checking it:
 | `claim`, `merkle`, `receipt` | Go packages for the spec, including full verification against Horizon |
 | `embed` | Receipts embedded in JPEGs as a C2PA manifest (SPEC.md §8.3) |
 | `cmd/stillproof` | `stillproof verify FILE [RECEIPT]` and `embed`, plus `keygen` and `sign` for development |
+| `web`, `cmd/wasm` | The browser verifier: drop in a photo, with or without its receipt. The same Go checks, compiled to WebAssembly |
 
 The rest of the project:
 
@@ -40,6 +41,9 @@ It does not prove the scene is genuine: a photo of a screen verifies too.
 ```sh
 go test ./...
 go test ./claim -update   # regenerate the test vectors, only on purpose
+
+# the browser verifier, at http://localhost:8000/?anchor=<service URL>
+scripts/build-web.sh && python3 -m http.server -d web
 ```
 
 ## License
