@@ -97,7 +97,9 @@ network and fail if they differ.
    SHA-256 of the claim lines.
 4. **The tree:** the leaf hash, `index`, `size` and `proof` recompute `root`.
 5. **The anchor:** on `network`, transaction `tx` exists and was successful,
-   its source is `account`, and its memo hash is `root`.
+   its source is `account`, and its memo hash is `root`. With a v1
+   `anchor.proof`, this is checked against the validators' signatures
+   instead (§8.2).
 6. **The verdict:** report all of the following.
    - "Unchanged since signed by key `key`."
    - "Existed no later than `closed_at` (ledger `ledger`)."
@@ -152,15 +154,51 @@ fails the **signature** step: a receipt never quietly drops to `software`.
 ### 8.2 Validator proof of the anchor
 
 `anchor.proof` is an [Externalize](https://github.com/Externalize-Labs/externalize)
-bundle for the anchor transaction, built with its transaction set, so the
-memo and source are proven too. With a proof, step 5 checks the bundle
-against the validators' signatures instead of trusting Horizon: the
-transaction is `tx`, it succeeded in ledger `ledger`, its source is
-`account`, and its memo hash is `root`. The verdict says which way step 5 was
-checked: `validators` or `horizon`.
+bundle (`externalize/bundle/v1`) for ledger `ledger` that claims
+`{"kind": "transaction", "tx_hash": tx}` and includes the ledger's
+transaction set (`transactions`). With a proof, step 5 is checked against the
+validators' signatures instead of Horizon. The verdict says which way step 5
+was checked: `anchor_checked` is `validators` or `horizon`.
 
-The anchoring service adds the proof once the anchor's ledger is in a history
-archive, a few minutes after it closes. Until then the receipt has no proof.
+What the bundle proves, and how:
+
+- **Ledger and close time.** `externalize verify --json` exits 0 only if
+  validators satisfying its trust set (the built-in set for the bundle's
+  network unless `--trust` is given) signed `EXTERNALIZE` for slot `ledger`
+  with exactly the header's `StellarValue`. That value holds the close time
+  and the transaction set's hash. The report's `ledger.sequence` and
+  `ledger.close_time` must equal `ledger` and `closed_at`. The bundle's
+  `network` must be the passphrase of `network`.
+- **Inclusion.** The CLI checks `transactions` against the signed transaction
+  set hash and that `tx` is in it. A transaction in the set was applied in
+  that ledger.
+- **Source and memo.** The CLI doesn't report them. The verifier finds, in
+  `transactions`, the bytes whose hash is `tx`: SHA-256 of the network ID,
+  `ENVELOPE_TYPE_TX` and the transaction's XDR. Only that transaction hashes
+  to `tx`, so its source must be `account` and its memo `MEMO_HASH` `root`.
+  Only a plain v1 envelope with an Ed25519 source is accepted; a fee-bump
+  anchor fails.
+- **Success is not proven by the signatures.** The CLI reads it from the
+  result set, which only the header's `txSetResultHash` commits to, and the
+  validators don't sign the header. Anyone can rewrite the result set,
+  recompute `txSetResultHash` and the header hash, and the bundle still
+  verifies. The verifier still requires the claim to say `succeeded`, but it
+  doesn't depend on it: the memo is in the agreed transaction set either way.
+- **A bundle without `transactions` proves nothing about the transaction**
+  (its inclusion rests on the result set alone), so it fails step 5.
+
+Nothing in step 5 comes from Horizon when the proof is checked. What is
+trusted instead is the verifier's trust set; the CLI's built-in testnet set
+is SDF's three validators, any 2 of 3.
+
+A proof that is rejected, or doesn't match, fails step 5: Horizon can't
+overrule it. A verifier that can't check proofs (no `externalize` installed,
+or it can't run) checks all of step 5 through Horizon, says `horizon`, and
+says why in `anchor_note`. It never reports `validators` without checking.
+
+The anchoring service adds the proof, and sets `v` to 1, once the anchor's
+ledger is in a history archive, a few minutes after it closes. Until then
+the receipt has no proof.
 
 ### 8.3 Embedded receipts
 

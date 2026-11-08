@@ -12,8 +12,8 @@ This repository holds the protocol and the tools for checking it:
 |---|---|
 | [`SPEC.md`](SPEC.md) | The protocol: claims, signatures, the Merkle tree, the anchor transaction and receipts |
 | [`testdata/vectors.json`](testdata/vectors.json) | Test vectors every implementation must reproduce |
-| `claim`, `merkle`, `receipt` | Go packages for the spec, including full verification against Horizon |
-| `cmd/stillproof` | `stillproof verify FILE RECEIPT`, plus `keygen` and `sign` for development |
+| `claim`, `merkle`, `receipt` | Go packages for the spec, including full verification against Horizon, or against the validators with a proof (§8.2) |
+| `cmd/stillproof` | `stillproof verify FILE RECEIPT`, plus `keygen` and `sign` for development. A receipt's validator proof is checked with the [`externalize`](https://github.com/Externalize-Labs/externalize) CLI (v0.2.0) if it is on `PATH`; without it, Horizon |
 
 The rest of the project:
 
