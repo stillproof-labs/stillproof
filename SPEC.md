@@ -171,6 +171,12 @@ gives back the exact bytes that were signed. A verifier given a photo with no
 separate receipt extracts the receipt, strips the segments and runs §6 on the
 result.
 
+Pinned details: one manifest with a v2 claim (`c2pa.claim.v2`) and the
+assertions `c2pa.actions.v2` (`c2pa.created`), `c2pa.hash.data` (one
+exclusion covering the APP11 segments) and `org.stillproof.receipt` (a JSON
+assertion). The APP11 segments go right after the leading APP0 and APP1
+segments, or after SOI if there are none, so Exif stays first.
+
 The C2PA signer is whoever embedded the receipt, usually with a self-signed
 certificate. C2PA tools show that signer as untrusted. That is expected: the
 proof is the receipt, not the C2PA signature.
