@@ -86,18 +86,20 @@ CI Android build in M3.
 
 ### M3. Hardware keys and the web verifier
 - [ ] Android Keystore (StrongBox where available), with a key attestation
-  chain. The verifier checks it.
-- [ ] iOS Secure Enclave key, plus App Attest.
-- [ ] The browser verifier on GitHub Pages: drop in a photo, with or without its receipt.
-- [ ] Check an uploaded photo: look up its receipt by hash, or read one embedded in it.
-- [ ] The design system in [DESIGN.md](DESIGN.md), in the app and the web verifier.
+  chain. The verifier checks it. Built and checked against real device chains;
+  waiting on a test on a physical phone.
+- [ ] iOS Secure Enclave key, plus App Attest. Compiles in CI for the
+  simulator; running it on an iPhone needs a paid Apple Developer account.
+- [x] The browser verifier on GitHub Pages: drop in a photo, with or without its receipt.
+- [x] Check an uploaded photo: look up its receipt by hash, or read one embedded in it.
+- [x] The design system in [DESIGN.md](DESIGN.md), in the app and the web verifier.
 - [x] Android build in CI: every run attaches a debug APK.
 
 ### M4. Trust-minimised and mainnet
-- [ ] An Externalize proof that the anchoring ledger was confirmed by the
-  network, so no Horizon trust is needed.
-- [ ] The mainnet anchoring service.
-- [ ] C2PA manifest embedding.
+- [x] An Externalize proof that the anchoring ledger was confirmed by the
+  network, so no Horizon trust is needed (Externalize v0.3.0, bundle v2).
+- [ ] The mainnet anchoring service. Ready; waiting on a funded anchor account.
+- [x] C2PA manifest embedding.
 
 ## Out of scope for the MVP
 
