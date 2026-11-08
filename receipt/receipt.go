@@ -82,6 +82,8 @@ type Verdict struct {
 	NotAfter time.Time     `json:"not_after,omitzero"`
 	Ledger   uint32        `json:"ledger,omitempty"`
 	Network  string        `json:"network,omitempty"`
+	Anchored string        `json:"anchor_checked,omitempty"` // CheckedValidators or CheckedHorizon, §8.2
+	Note     string        `json:"anchor_note,omitempty"`    // why a proof wasn't checked
 	Caveat   string        `json:"caveat"`
 	Signed   *claim.Signed `json:"-"`
 }
@@ -92,6 +94,7 @@ func (v Verdict) OK() bool { return v.Failed == "" }
 // VerifyOptions configures VerifyWith. The zero value is what Verify uses.
 type VerifyOptions struct {
 	Attest attest.Options // for r.Attestation
+	Proofs ProofChecker   // for anchor.proof (§8.2); nil leaves step 5 to l
 }
 
 // Verify checks file against r, reading the anchor transaction through l.
@@ -100,6 +103,9 @@ func Verify(ctx context.Context, file []byte, r Receipt, l Lookup) Verdict {
 }
 
 // VerifyWith is Verify with options.
+//
+// When r has a proof and o.Proofs is set, step 5 is checked against the
+// validators' signatures instead of through l.
 func VerifyWith(ctx context.Context, file []byte, r Receipt, l Lookup, o VerifyOptions) Verdict {
 	v := Verdict{Caveat: Caveat}
 	fail := func(s Step, format string, a ...any) Verdict {
@@ -144,22 +150,68 @@ func VerifyWith(ctx context.Context, file []byte, r Receipt, l Lookup, o VerifyO
 		return fail(StepTree, "%v", err)
 	}
 
-	tx, err := l.Transaction(ctx, r.Anchor.Network, r.Anchor.Tx)
-	switch {
-	case err != nil:
-		return fail(StepAnchor, "transaction %s on %s: %v", r.Anchor.Tx, r.Anchor.Network, err)
-	case !tx.Successful:
-		return fail(StepAnchor, "transaction %s failed", r.Anchor.Tx)
-	case tx.Source != r.Anchor.Account:
-		return fail(StepAnchor, "transaction source is %s, not %s", tx.Source, r.Anchor.Account)
-	case tx.MemoHash == nil || *tx.MemoHash != root:
-		return fail(StepAnchor, "transaction memo is not the receipt's root")
-	case tx.Ledger != r.Anchor.Ledger || !tx.ClosedAt.Equal(r.Anchor.ClosedAt):
-		return fail(StepAnchor, "receipt says ledger %d at %s, the network says %d at %s",
-			r.Anchor.Ledger, r.Anchor.ClosedAt.Format(time.RFC3339), tx.Ledger, tx.ClosedAt.Format(time.RFC3339))
+	if err := checkAnchor(ctx, &v, r.Anchor, root, l, o.Proofs); err != nil {
+		return fail(StepAnchor, "%v", err)
 	}
-	v.NotAfter, v.Ledger, v.Network = tx.ClosedAt.UTC(), tx.Ledger, r.Anchor.Network
 	return v
+}
+
+// How step 5 was checked (Verdict.Anchored).
+const (
+	CheckedValidators = "validators"
+	CheckedHorizon    = "horizon"
+)
+
+// checkAnchor runs step 5, against the proof when it can, and records how.
+// A proof that can't be checked leaves step 5 to l, with a note; a proof
+// that is checked and fails, fails the step.
+func checkAnchor(ctx context.Context, v *Verdict, a Anchor, root [32]byte, l Lookup, proofs ProofChecker) error {
+	if len(a.Proof) > 0 {
+		var tx *Tx
+		err := fmt.Errorf("%w: no proof checker", ErrUnchecked)
+		if proofs != nil {
+			tx, err = proofs.Check(ctx, a)
+		}
+		switch {
+		case errors.Is(err, ErrUnchecked):
+			v.Note = err.Error()
+		case err != nil:
+			return fmt.Errorf("validator proof: %w", err)
+		default:
+			if err := matchTx(tx, a, root); err != nil {
+				return fmt.Errorf("validator proof: %w", err)
+			}
+			v.Anchored = CheckedValidators
+			v.NotAfter, v.Ledger, v.Network = tx.ClosedAt.UTC(), tx.Ledger, a.Network
+			return nil
+		}
+	}
+	tx, err := l.Transaction(ctx, a.Network, a.Tx)
+	if err != nil {
+		return fmt.Errorf("transaction %s on %s: %w", a.Tx, a.Network, err)
+	}
+	if err := matchTx(tx, a, root); err != nil {
+		return err
+	}
+	v.Anchored = CheckedHorizon
+	v.NotAfter, v.Ledger, v.Network = tx.ClosedAt.UTC(), tx.Ledger, a.Network
+	return nil
+}
+
+// matchTx compares what the network or a proof says with the receipt.
+func matchTx(tx *Tx, a Anchor, root [32]byte) error {
+	switch {
+	case !tx.Successful:
+		return fmt.Errorf("transaction %s failed", a.Tx)
+	case tx.Source != a.Account:
+		return fmt.Errorf("transaction source is %s, not %s", tx.Source, a.Account)
+	case tx.MemoHash == nil || *tx.MemoHash != root:
+		return errors.New("transaction memo is not the receipt's root")
+	case tx.Ledger != a.Ledger || !tx.ClosedAt.Equal(a.ClosedAt):
+		return fmt.Errorf("receipt says ledger %d at %s, the network says %d at %s",
+			a.Ledger, a.ClosedAt.Format(time.RFC3339), tx.Ledger, tx.ClosedAt.Format(time.RFC3339))
+	}
+	return nil
 }
 
 func hash32(s string) (merkle.Hash, error) {
