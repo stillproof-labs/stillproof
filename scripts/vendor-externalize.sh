@@ -7,7 +7,7 @@
 # needs cargo with the wasm32-unknown-unknown target.
 set -euo pipefail
 VERSION=v0.3.0
-SHA256=
+SHA256=2445ec5eb7b276bd8a69648b7e2456f3f27ce2b1b74f51df04cbc8be83d852ff
 COMMIT=3b1c322ed39bf7e89ed78281911fe77591d3338c # main at "chore: release 0.3.0"
 NAME=externalize-wasm-$VERSION-web
 DIR=$(cd "$(dirname "$0")/.." && pwd)/web/vendor/externalize

@@ -49,7 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       EXTERNALIZE: v0.3.0
-      EXTERNALIZE_SHA256: ""
+      EXTERNALIZE_SHA256: e16b09955b233429091f9334676e912ea1da768fe37016d7f5dabac4ce81b019
       EXTERNALIZE_COMMIT: 3b1c322ed39bf7e89ed78281911fe77591d3338c
       NEED_EXTERNALIZE: 1
     steps:
