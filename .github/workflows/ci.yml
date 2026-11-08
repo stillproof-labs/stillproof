@@ -32,6 +32,8 @@ jobs:
       - name: gofmt
         run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
       - run: go vet ./...
+      - name: build the browser verifier
+        run: GOOS=js GOARCH=wasm go vet ./cmd/wasm && GOOS=js GOARCH=wasm go build -o /dev/null ./cmd/wasm
       - uses: golangci/golangci-lint-action@v9
         with:
           version: latest

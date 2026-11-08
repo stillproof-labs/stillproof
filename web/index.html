@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Stillproof verifier</title>
+  <meta name="description" content="Check a photo against its Stillproof receipt: unchanged since capture, and anchored on Stellar.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fragment+Mono&family=Gloock&family=Schibsted+Grotesk:wght@400;500;700&display=swap">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 4'%3E%3Crect width='4' height='4' fill='%230F0E0C'/%3E%3Crect x='0' y='0' width='1' height='1' fill='%23EDE6D6'/%3E%3Crect x='2' y='1' width='1' height='1' fill='%238E877B'/%3E%3Crect x='1' y='2' width='1' height='1' fill='%23EDE6D6'/%3E%3Crect x='3' y='3' width='1' height='1' fill='%23F2A33A'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+  <script src="wasm_exec.js"></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <a class="mark" href="https://github.com/stillproof-labs/stillproof">Stillproof</a>
+    <span class="edge" id="edge-top">Verifier · Receipt v1</span>
+  </header>
+
+  <main>
+    <h1>Check a photo.</h1>
+    <p class="lede">Stillproof proves a photo is unchanged since the phone that took it signed it, and that it existed by a moment recorded on Stellar.</p>
+
+    <section class="drop" id="drop" aria-labelledby="drop-title">
+      <span class="crop tl" aria-hidden="true"></span><span class="crop tr" aria-hidden="true"></span>
+      <span class="crop bl" aria-hidden="true"></span><span class="crop br" aria-hidden="true"></span>
+      <p class="drop-title" id="drop-title">Drop a photo. Add its receipt if you have one.</p>
+      <input class="sr-only" type="file" id="files" multiple accept="image/*,.json,application/json" aria-describedby="drop-hint">
+      <label class="choose" for="files">Choose files</label>
+      <p class="edge" id="drop-hint">Photo · optional receipt .json</p>
+      <p class="edge loaded" id="loaded" aria-live="polite"></p>
+    </section>
+    <p class="privacy">Only two things leave this browser: the photo’s SHA-256, for the receipt lookup, and the Horizon read of the anchor transaction. The photo itself never does.</p>
+
+    <p class="status" id="status" role="status" aria-live="polite"></p>
+
+    <section class="result" id="result" hidden aria-label="Result">
+      <div class="print">
+        <figure class="photo">
+          <img id="photo" alt="">
+          <div class="noprev" id="noprev" hidden><span class="edge">No preview · not an image this browser shows</span></div>
+          <figcaption class="edge" id="photo-edge"></figcaption>
+        </figure>
+        <div class="hash">
+          <p class="edge">SHA-256</p>
+          <div class="fingerprint" id="fingerprint" aria-hidden="true"></div>
+          <p class="hex" id="hex"></p>
+          <p class="note" id="signed" hidden></p>
+        </div>
+      </div>
+      <div id="verdicts"></div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p class="edge">Anchor service <span id="anchor-url"></span> · <a href="https://github.com/stillproof-labs/stillproof/blob/main/SPEC.md">Spec</a> · <a href="vendor/externalize/NOTICE">Notices</a></p>
+  </footer>
+
+  <template id="verdict-tpl">
+    <article class="verdict">
+      <p class="edge vnum"></p>
+      <ol class="strip" aria-label="Verification steps"></ol>
+      <h2 class="vtitle"></h2>
+      <p class="reason" hidden></p>
+      <dl class="lines"></dl>
+      <p class="vnote" hidden></p>
+      <p class="caveat"></p>
+    </article>
+  </template>
+</body>
+</html>

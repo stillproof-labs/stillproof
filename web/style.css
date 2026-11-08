@@ -1,0 +1,275 @@
+/* The darkroom ledger: docs/DESIGN.md. */
+
+:root {
+  --bg: #0F0E0C;
+  --surface: #191714;
+  --line: #2E2A25;
+  --muted: #8E877B;
+  --text: #EDE6D6;
+  --safelight: #F2A33A;
+  --ok: #9FDCA0;
+  --fail: #F0563F;
+
+  --display: "Gloock", Georgia, serif;
+  --sans: "Schibsted Grotesk", system-ui, sans-serif;
+  --mono: "Fragment Mono", ui-monospace, monospace;
+  --r: 2px;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #F3EEE3;
+    --surface: #EAE3D4;
+    --line: #D2C9B6;
+    --muted: #6F685C;
+    --text: #15130F;
+    --safelight: #B8651A;
+    --ok: #2F7A45;
+    --fail: #B83A26;
+    color-scheme: light;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 400 16px/1.5 var(--sans);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+a { color: inherit; text-decoration-color: var(--muted); text-underline-offset: 3px; }
+a:hover { text-decoration-color: var(--text); }
+:focus-visible { outline: 1px solid var(--text); outline-offset: 3px; }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
+/* Edge labels: the print's margin. */
+.edge {
+  margin: 0;
+  font: 400 11px/1.6 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.top, main, .foot {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 24px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.mark { font: 400 22px/1 var(--display); text-decoration: none; }
+
+main { flex: 1; padding-top: 48px; padding-bottom: 48px; }
+
+h1 {
+  margin: 0 0 12px;
+  font: 400 clamp(40px, 9vw, 64px)/1 var(--display);
+  letter-spacing: -0.01em;
+}
+.lede { margin: 0 0 32px; max-width: 34em; color: var(--muted); }
+
+/* The drop zone: an easel, marked by crop marks. */
+.drop {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  padding: 48px 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  text-align: center;
+}
+.drop.over { border-color: var(--text); background: var(--surface); }
+.drop-title { margin: 0; font: 400 22px/1.25 var(--display); max-width: 22em; text-wrap: balance; }
+.crop { position: absolute; width: 12px; height: 12px; border: 0 solid var(--muted); }
+.crop.tl { top: 8px; left: 8px; border-top-width: 1px; border-left-width: 1px; }
+.crop.tr { top: 8px; right: 8px; border-top-width: 1px; border-right-width: 1px; }
+.crop.bl { bottom: 8px; left: 8px; border-bottom-width: 1px; border-left-width: 1px; }
+.crop.br { bottom: 8px; right: 8px; border-bottom-width: 1px; border-right-width: 1px; }
+
+/* The screen's one safelight element. */
+.choose {
+  display: inline-block;
+  padding: 12px 24px;
+  border-radius: var(--r);
+  background: var(--safelight);
+  color: var(--bg);
+  font: 700 15px/1 var(--sans);
+  cursor: pointer;
+}
+.choose:hover { filter: brightness(1.08); }
+input:focus-visible + .choose { outline: 1px solid var(--text); outline-offset: 3px; }
+.loaded:empty { display: none; }
+.loaded { color: var(--text); }
+
+.privacy { margin: 12px 0 0; font-size: 13px; color: var(--muted); }
+
+.status { margin: 32px 0 0; font: 400 11px/1.6 var(--mono); text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); }
+.status:empty { display: none; }
+.status.busy::after { content: "▍"; animation: blink 1s steps(2) infinite; margin-left: 4px; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* The print: photo, then its fingerprint and hash. */
+.result { margin-top: 48px; }
+.print {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--line);
+}
+.photo { margin: 0; display: grid; gap: 8px; align-content: start; }
+.photo img {
+  display: block;
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+.photo img:not([src]), .photo img[hidden] { display: none; }
+.noprev {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 3;
+  max-height: 320px;
+  padding: 16px;
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+.noprev[hidden] { display: none; }
+.hash { display: grid; gap: 12px; align-content: start; }
+.fingerprint {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 1px;
+  width: 136px;
+  padding: 1px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.fingerprint span { aspect-ratio: 1; }
+.t0 { background: var(--bg); }
+.t1 { background: var(--line); }
+.t2 { background: var(--muted); }
+.t3 { background: var(--text); }
+.hex { margin: 0; font: 400 13px/1.7 var(--mono); overflow-wrap: anywhere; }
+.note { margin: 0; font-size: 13px; color: var(--muted); }
+.note code, .lines code { font: 400 12px var(--mono); overflow-wrap: anywhere; }
+
+/* A verdict. */
+#verdicts:focus { outline: none; }
+.verdict { padding: 32px 0; border-bottom: 1px solid var(--line); }
+.verdict:last-child { border-bottom: 0; }
+.vnum { margin-bottom: 12px; }
+
+/* The proof strip: five frames on a strip of film, sprockets above and below. */
+.strip {
+  list-style: none;
+  margin: 0;
+  padding: 14px 8px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  background: var(--surface);
+  border-radius: var(--r);
+  position: relative;
+}
+.strip::before, .strip::after {
+  content: "";
+  position: absolute;
+  left: 8px; right: 8px;
+  height: 4px;
+  border-top: 4px dotted var(--bg);
+}
+.strip::before { top: 5px; }
+.strip::after { bottom: 1px; }
+.frame {
+  min-height: 72px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font: 400 10px/1.3 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.frame b { font-weight: 400; }
+.frame.ok { background: var(--ok); border-color: var(--ok); color: var(--bg); }
+.frame.fail { background: var(--fail); border-color: var(--fail); color: var(--bg); }
+
+.vtitle { margin: 24px 0 0; font: 400 clamp(28px, 6vw, 40px)/1.1 var(--display); }
+.reason { margin: 8px 0 0; color: var(--fail); }
+
+.lines { margin: 24px 0 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 10px 24px; }
+.lines dt { padding-top: 3px; }
+.lines dd { margin: 0; }
+.lines .mono { font: 400 13px/1.6 var(--mono); overflow-wrap: anywhere; }
+
+/* How step 5 was checked: a stamp in the verdict's colour. */
+.how {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 1px 6px;
+  border: 1px solid var(--ok);
+  border-radius: var(--r);
+  color: var(--ok);
+  font: 400 11px/1.6 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  vertical-align: 2px;
+}
+
+.vnote { margin: 16px 0 0; font-size: 13px; color: var(--muted); }
+.caveat { margin: 32px 0 0; font: 400 22px/1.35 var(--display); max-width: 30em; }
+
+.none { padding: 32px 0; }
+.none h2 { margin: 0; font: 400 clamp(28px, 6vw, 40px)/1.1 var(--display); }
+.none p { margin: 12px 0 0; color: var(--muted); max-width: 34em; }
+
+.foot { padding-top: 16px; padding-bottom: 24px; border-top: 1px solid var(--line); }
+
+@media (max-width: 560px) {
+  main { padding-top: 32px; }
+  .print { grid-template-columns: minmax(0, 1fr); }
+  .drop { padding: 40px 16px; }
+  .lines { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .lines dd { margin-bottom: 12px; }
+  .strip { gap: 4px; padding: 14px 4px; }
+  .frame { padding: 6px 3px; font-size: 9px; letter-spacing: 0; min-height: 64px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status.busy::after { animation: none; }
+}
