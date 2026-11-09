@@ -68,3 +68,11 @@ gradients or shadows.
 Short, plain and exact. Say "Anchored in ledger 5565275", not "Success!". A
 failure names the step and the reason. Never claim more than the caveat
 allows.
+
+## Logo
+
+The mark is the Gloock "S" with a safelight full stop: the moment is fixed.
+Files are in [`brand/`](../brand): `mark.svg` (darkroom), `mark-print.svg`
+(print), `mark-mono.svg` (one colour), and the wordmark in both modes. They
+are drawn from Gloock's outlines by `brand/make.py`, so they need no font.
+Keep the full stop safelight; don't recolour, outline or stretch the mark.
