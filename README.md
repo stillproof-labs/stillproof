@@ -1,4 +1,9 @@
-# Stillproof
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="brand/wordmark.svg">
+    <img src="brand/wordmark-print.svg" alt="Stillproof" height="56">
+  </picture>
+</h1>
 
 **Prove a photo is unedited, and when it was taken.** Stillproof doesn't
 guess whether a photo looks real. It proves where the file came from: the
